@@ -1,0 +1,17 @@
+\subsection{Modo Debug}
+
+El modo debug lo implementamos con un flag llamado \textbf{'modo_debug'} de un byte en la rutina de atención de interrupciones, este flag puede estar en tres estados diferentes.
+
+\begin{itemize}
+\item \textbf{0x00}: Corresponde al modo debug desactivado.
+\item \textbf{0x01}: Corresponde al modo debug activo.
+\item \textbf{0x02}: Corresponde al modo debug cuando esta mostrando una excepción por pantalla.
+\end{itemize}
+
+En la rutina de atención de interrupción del teclado \textbf{isr33} agregamos el código encargado de alternar entre los estados de debug al capturar la tecla 'y', lo que hace es alternar entre modo debug activado y desactivado, o si estaba mostrando una excepción, dejar de mostrarla y ponerse en activo nuevamente a la espera de una nueva excepción.
+\vspace{0.25cm}
+
+En las rutinas encargadas de manejar las excepciones se agrega una comprobación para fijarse el modo de debug actual, en caso de estar activo como se acaba de generar una excepción se llama a la rutina \textbf{'mostrarExcepcion'} encargada de mostrar por pantalla toda la información de debug, para eso esta rutina pone en la pila toda la información adicional necesaria y llama a una función de \textbf{screen.c} para pintar el recuadro donde se mostrara, luego se saltara a la tarea idle.
+\vspace{0.25cm}
+
+Finalmente para mantener el sistema a la espera mientras se muestra la excepción, en la rutina de atención de reloj \textbf{isr32} comprobamos si estamos efectivamente mostrando una excepción por pantalla, en ese caso ignoramos al scheduler y nos mantenemos en la tarea idle, así estaremos hasta que una interrupción de teclado con la tecla 'y' nos saque de este modo y se resuma el funcionamiento del scheduler.

@@ -1,0 +1,65 @@
+\subsection{Tareas}
+
+\subsubsection{Task-State Segment}
+
+Nuestro sistema posée 27 tareas entre las cuales se encuentran la tarea inicial sin valores especificados (ya que solo cumple la funcion de guardar el estado anterior a saltar a la tarea idle), la tarea idle, 15 tareas health, 5 tareas del jugador A y 5 tareas del jugador B. Para esto creamos un arreglo de 27 entradas (llamado \textbf{tss_entries}) y el mismo se encuentra en el archivo \textbf{tss.c}) en las que están cada una de las tss de las tareas.
+
+Hemos distribuído el arreglo de la siguiente forma para tener un mejor control sobre las TSS:
+
+\begin{itemize}
+	\item Posición 0: TSS tarea inicial.
+	\item Posición 1: TSS tarea idle.
+	\item Posiciones 2 a 16: TSS tareas health.
+	\item Posiciones 17 a 21: TSS tareas jugador A.
+	\item Posiciones 22 a 26: TSS tareas jugador B.
+\end{itemize}
+
+Para la creación de cada TSS hicimos las funciones \textbf{tss_inicializar_idle}, \textbf{tss_inicializar_tarea} y \textbf{inicializar_tss} donde las primeras dos llaman a la última que es la que setea todos los valores de la TSS de la siguiente forma:
+
+\begin{itemize}
+	\item Registros en 0.
+	\item SS0: Segmento de datos de nivel kernel.
+	\item ESP0: La dirección de una nueva pagina reservada para funcionar como pila de kernel más el page size.
+	\item CR3: Dirección del page directory de la tarea ó 0x27000 para idle.
+	\item EIP: Posicion de la tarea idle dentro del espacio de kernel ó la direccion 0x08000000 que es la direccion virtual de inicio de las tareas.
+	\item FLAGS: 0x202 (Interrupciones activadas).
+	\item ESP/EBP: Para la tarea idle la misma dirección que en ESP0. Para la tarea EIP más el page size (0x1000).
+	\item Segmentos: Segmento de datos kernel para idle y segmento de datos de nivel usuario para las tareas con un or 3 para setear el RPL del selector de segmento.
+	\item CS: Segmento de código de nivel kernel par idle y de usuario con un or 3 para setear el RPL para las tareas.
+	\item Resto de los valores en cero.
+\end{itemize}
+
+\subsubsection{Entradas En La GDT}
+
+En la GDT definimos 27 entradas de descriptores de TSS de las cuales la primera posición pertenece a la tarea inicial, la segunda posición pertenece a la tarea idle y las siguientes son las tareas que el sistema corre concurrentemente.
+Estas fueron seteadas de la siguiente forma:
+
+\begin{itemize}
+	\item Base: Dirección de la TSS. (Calculada usando el vector de TSSs \&tss_entries[indice_tss])
+	\item Limite: 103 (el tamaño menos 1 de la TSS)
+	\item Type: 1001 (32-bit TSS)
+	\item System: 0
+	\item DPL: 00 (Kernel)
+	\item AVL: 0
+	\item L: 0
+	\item P: 1
+	\item DB: 1 (32-bit Segment)
+	\item G: 0 (Byte)
+\end{itemize}
+
+Para inicializar los valores en la GDT creamos la función \textbf{inicializar_gdt_tss} que se encuentra en el archivo \textbf{gdt.c} y llamamos desde el código del Kernel. Esta función genera las 27 entradas en la GDT de la forma descripta.
+
+\subsubsection{Salto a la primera tarea (idle)}
+
+Una vez que se tienen creadas las TSSs y los descriptores de TSS en la GDT, se carga el descriptor de la tarea inicial, y luego se realiza un \textbf{jmp far} a la tarea idle.
+
+\begin{algorithm}
+		\begin{algorithmic}[H]
+			\State ; Cargar tarea inicial
+			\State mov eax, 0x48
+			\State ltr ax
+			\State
+			\State ; Saltar a la primera tarea: Idle
+			\State jmp 0x50:0
+		\end{algorithmic}
+\end{algorithm}

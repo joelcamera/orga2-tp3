@@ -1,0 +1,42 @@
+\subsection{Scheduler Y Juego}
+
+
+\subsubsection{Estructura Del Scheduler}
+
+Para el scheduler generamos la estructura \textbf{TAREA_INFO}, que se encuentra en el archivo \textbf{sched.h}. En esta estructura se puede encontrar:
+
+\begin{itemize}
+\item char \textit{viva}: Define si la tarea esta viva o no.
+\item short \textit{pagina_x} y \textit{pagina_y} : Son las coordenadas en el mapa (y permiten deducir la posicion en la memoria) de la pagina mapeada por la tarea (si lo hubiese hecho).
+\item char \textit{estado}: nos dice si la tarea esta health o si esta infectada por a o b.
+\item int \textit{tssIdx}: Indica la tarea real apuntada por esta entrada del vector. (es el indice en el vector \textbf{tss_entries})
+\item char \textit{tick}: se va actualizando con un \% 4 y sirve para el reloj de la tarea.
+\end{itemize}
+
+De esta estructura creamos 3 arreglos para los tres distintos tipos de tareas que tenemos: \textbf{tareas_health}, \textbf{tareas_a} y \textbf{tareas_b}. Estos se encuentran en \textbf{sched.c} y nos sirven para saber que tareas estan vivas, cuales estan infectadas y el orden en que van a ser ejecutadas.
+
+Tambíen tenemos cinco enteros: \textbf{actual_health}, \textbf{actual_a}, \textbf{actual_b}, \textbf{tssActual} y \textbf{actual_tipo}. Los primeros tres sirven para saber cual es la tarea de cada arreglo que está corriendo. Los últimos dos sirven para saber el offset en la GDT del descriptor de TSS de la tarea que esta corriendo y el tipo de la tarea que esta corriendo (a, b o health).
+
+
+\subsubsection{Funcionamiento Del Scheduler}
+
+Desde el codigo del Kernel llamamos a la función \textbf{inicializar_scheduler} en donde se inicializan todos los valores de la estructura del mismo. Los enteros se incializan todos en cero y los arreglos de tareas sin tareas vivas, luego se llamara a \textbf{inicializar_juego} que creara las 15 tareas health.
+
+Cuando un jugador decide lanzar una tarea, utilizando la función \textbf{lanzarTarea} que se encuentra en el archivo \textbf{sched}, siempre y cuando de acuerdo a la logica del juego pueda hacerlo, se busca la proxima posición libre del arreglo del jugador que la lanzó, o sea una posición que tenga una tarea que no esté viva, la setea como viva y devuelve el indice de la TSS en el arreglo \textbf{tss_entries}.
+
+El \textit{Quantum} de cada tarea es el un clock del reloj. Por lo tanto, cada vez que se atienda una interrupción de reloj dentro de esta rutina se llama a la función \textbf{sched_proximo_indice} (que se encuentra en el archivo \textbf{sched.c}). Esta función lo que hace es actualizar el valor \textbf{actual_tipo} (con un modulo 3 ya que hay solo tres tipos de tareas) e ir a buscar al arreglo del tipo (0 = health, 1 = jugador a y 2 = jugador 3) la siguiente tarea a correr. Si la encuentra, devuelve el indice del descriptor de TSS de la tarea en la GDT sino devuelve el indice del descriptor de TSS de la tarea idle en la GDT, y con estos indices realiza el \textit{jmp far}.
+
+Si mientras se ejecuta una tarea se produce una excepcion, al llamar a la rutina de atencion de interrupcion de esa excepcion se mata la tarea que estuvo corriendo y salta a la tarea idle para que corra hasta que se termine el \textit{Quantum} (cuando haya una interrupción de reloj) de la tarea que origino la excepcion . Para matarla llama a la función \textbf{game_matar_tarea}, que se encuentra en \textbf{game.c}. Dentro de esta función se actualizan las estructuras de manejo de tareas, luego llama a la función \textbf{matarTarea}, que se encuentra en \textbf{sched.c}, en donde pone a la tarea como muerta dentro de su arreglo de tareas dependiendo de que tipo sea (health, a o b).
+Luego, se desmapea la pagina de la tarea.
+
+
+\subsubsection{Juego}
+
+% Para el manejo de las tareas utilizamos una matriz del tamaño del mapa para guardar información sobre las tareas de cada posición, a su vez tres vectores para manejar la información de las tareas y dos estructuras para manejar la información de los jugadores.
+
+% Queda pendiente una explicación detallada sobre el funcionamiento de estas estructuras.
+
+Para manejar la informacion del juego utilizamos una matriz de 80x44 (tamaño del mapa) llamada \textbf{mapa} (que se encuentra en \textbf{screen.c}). Las entradas de esta matriz tienen un struct que posee el indice de la TSS en el vector \textbf{tss_entries}, un char \textit{dirty}, un char \textit{infectado_por}, un char \textit{tarea_de} y otro char \textit{pagina_de}.
+Esta matriz \textbf{mapa} nos sirve para saber que tarea hay en cada posición en el mapa, si fueron infectadas, de quien era originalmente y si esa posicion fue mapeada por alguna tarea. El char \textit{dirty} sirve para saber si hubo una modificación en esa coordenada del mapa y poder actualizar la pantalla solo en la posicion donde hubo modificaciones sin necesidad de tener que actualizar todo en cada ciclo.
+
+Para los jugadores creamos un struct que posee las coordenadas del mapa en donde se encuentra cada uno y la cantidad de vidas, puntos y tareas activas que tiene el jugador. Utilizamos esta estructura en \textbf{screen.c} para los dos jugadores del juego.

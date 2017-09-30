@@ -1,0 +1,51 @@
+\subsection{Paginación}
+
+\subsubsection{Inicialización del Directorio y Tabla de Páginas (Page Directory y Page Table)}
+
+Antes de activar paginación primero generamos el directorio de páginas (Page Directory) con la función \textbf{mmu_inicializar_dir_kernel} que se encuentra en el archivo \textbf{mmu.c}. Esta función, a su vez, llama a  \textbf{inicializar_identity_mapping} pasandole como parametros \textit{KERNEL_PAGE_DIRECTORY} y \textit{KERNEL_PAGE_TABLE} que son las posiciones 0x27000 y 0x28000 respectivamente.
+La función \textbf{inicializar_identity_mapping} se va encargar de inicializar como identity mapping los primeros 4mb de memoria.
+
+\subsubsection{Activación de la Paginación}
+
+Una vez que fueron generadas las tablas, activamos la paginación en el código del kernel de la siguiente forma:
+
+\begin{algorithm}[H]
+		\begin{algorithmic}[H!]
+			\State ; Inicializar el directorio de paginas
+    		\State call mmu_inicializar_dir_kernel
+
+			\State; Cargar directorio de paginas
+    		\State mov eax, 0x27000
+    		\State mov cr3, eax
+
+    		\State ; Habilitar paginacion
+    		\State mov eax, cr0
+    		\State or eax, 0x80000000
+    		\State mov cr0, eax
+
+		\end{algorithmic}
+\end{algorithm}
+
+
+\subsubsection{Administrador de Memoria}
+
+Para administrar la memoria en el area libre, creamos la función llamada \textbf{mmu_inicializar} que simplemente inicializa la variable global \textit{proxima_pagina_libre} que se encuentra en el archivo \textbf{mmu.c}.
+\textit{proxima_pagina_libre} es un contador de páginas que comienza en la dirección 0x100000. 
+Cuando el sistema necesita memoria, toma el valor de este contador, que corresponde a la siguiente página libre y luego lo incrementa en 0x1000 que es el tamaño de cada página.
+
+
+\subsubsection{Mapeado de Páginas}
+
+Para el mapeado de páginas contamos con la función \textbf{mmu_mapear_pagina} que toma como parametros la direccion virtual, el cr3 y la direccions fisica y el privilegio (DPL). En la dirección virtual se shiftea hacia la derecha para dejar los valores de los bits [31:22] para obtener el offset del Page Directory. Una vez obtenido el offset se lo suma a la dirección que se encuentra en el registro cr3 para obtener de la page directory la entrada de la page table y ahí buscar la dirección fisica. Si ésta no está presente, se reserva una pagina de memoria utilizando \textbf{mmu_proxima_pagina_fisica_libre} y se genera una nueva entrada de página en el lugar offset de la Page Directory con la función \textbf{inicializar_page_entry}. 
+Luego, de la dirección virtual extraemos los bits [21:12] (con otro shift y limpiando la parte alta) y utilizando nuevamente inicializar_page_entry generamos en la tabla de páginas, con el offset obtenido una entrada presente, de escritura y con el DPL y direccion fisica pasados como argumento. Por último, se llama a la función \textbf{tlbflush} para que invalide el \textit{cache} de traducción de direcciones.
+
+\subsubsection{Desmapeado de Páginas}
+
+Para el desmapeado de las páginas contamos con la función \textbf{mmu_unmapear_pagina}, esta toma como parametros la dirección virtual y el cr3. De la dirección virtual obtenemos el offset del directorio de páginas y de la tabla de páginas. Luego, en el page directory apuntado por cr3 buscamos la page table, y en la page table ponemos todos los bits en cero para la entrada obtenida de la direccion virtual. Una vez hecho esto, se llama a la función \textbf{tlbflush} para que invalide el \textit{cache} de traducción de direcciones.
+
+
+\subsubsection{Inicialización de Páginas Para Tareas}
+
+Creamos la función \textbf{mmu_inicializar_dir_tarea} que lo que hace es reservar para cada tarea dos paginas libres, con la función \textbf{mmu_proxima_pagina_fisica_libre}, la primera página se utiliza para la creacion del directorio de pagina que utilizara la tarea nueva, la seguna pagina se utiliza como page table inicializado con identity mapping los primeros 4mb de memoria con privilegio 0, para que cuando haya un cambio de contexto, por una interrupcion durante la ejecucion de esta tarea, el kernel tenga mapeado el mismo area de memoria.
+Luego se realiza un identity mapping temporal,  sobre el directorio de paginas de la tarea que se esta ejecutando al llamar a la interrupcion, para asi poder copiar la tarea que se desea lanzar, desde el origen a la posicion del mapa requerida.
+Luego se mapea para la nueva tarea, la direccion 0x08000000 con privilegio de usuario a la posicion fisica del mapa, ademas se realiza el identity mapping con privilegio kernel a esa direccion fisica, para que el kernel pueda por ejemplo escribir el resultado del syscall 'donde'.

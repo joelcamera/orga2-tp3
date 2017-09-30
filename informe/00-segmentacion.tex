@@ -1,0 +1,59 @@
+\subsection{Segmentación y Pasaje a Modo Protegido}
+
+\subsubsection{Inicialización de la Tabla de Descriptores Globales (GDT)}
+Lo primero que hemos hecho fue completar la GDT con 4 segmentos, dos para nivel 0, uno de código y uno de datos, y luego dos para nivel 3 tambien de codigo y datos. Estos segmentos fueron puestos en las posiciones 4 a 7 de la tabla, dejando libres las posiciones 1 a 3 de la tabla y la posición 0 con una entrada completamente en cero.
+
+Los cuatro segmentos seteados direccionan a los primeros 878MB de memoria desde la posición 0. En este espacio entran 224.768 (0x36E00) bloques de 4KB. Como el límite del segmento es igual al tamaño del mismo menos 1, y que se accede desde la posicion 0, éste es 0x36DFF. Por lo tanto, en estos cuatro segmentos en la parte baja del límite ([15:0]) el valor es 0x6DFF y en la parte alta del mismo ([19:16]) 0x03. El bit de granularidad fue seteado en 0x01 (4K). El bit D/B fue seteado en 0x01 (Segmentos de 32-bit). El bit L fue seteado en 0x0 (No es segmento de 64-bit). El bit AVL fue seteado en 0x0 (ya que no tiene ningun uso especifico). El bit P fue seteado en 0x01 (los segmentos estan presentes). Los dos bits de DPL fueron seteados en 0x0 ó 0x3 según corresponda si el privilegio es sistema o usuario. El bit S fue seteado en 0x1 (desactivado). En los dos segmentos de código, los cuatro bits de Type fueron seteados en 0x8 (Execute-Only) y en los dos segmentos de datos fueron seteados en 0x2 (Read/Write).
+
+Además de estos cuatro segmentos, se agrega uno más de datos en la posición 8 de la tabla que describe el área de la pantalla en memoria que puede ser utilizado solo por el kernel, esto quiere decir que el DPL del mismo esta seteado en 0x0. El cambio con los anteriores segmentos asignados en la GDT es la base y el límite. La base del mismo es 0xB8000, por lo tanto en la parte baja de la base (base[0:15]) se agrega el valor 0x8000 y en la parte alta de la misma (base[23:16]) 0xB. El límite del mismo es 0x1, por lo tanto en la parte baja del mismo (limit[0:15]) agregamos el valor 0x1 y en la parte alta (limit[16:19]) el valor 0x0.
+
+\subsubsection{Pasaje a Modo Protegido}
+Una vez que tenemos completada la GDT, deshabilitamos las interrupciones (\textit{CLI}) ya que no estan cargadas las rutinas de atencion de interrupciones. Luego habilitamos A20 (\textit{call habilitar_A20}) para que se habilite el acceso a direcciones superiores a los $2^{20}$ bits.
+
+Una vez habilitada A20, cargamos la GTD en el registro GDTR con la dirección y el largo del mismo (\textit{lgdt [GDT_DESC]}) donde \textit{GDT_DESC} es un struct que posee estos datos.
+
+Teniendo habilitada la A20 y cargado la GTD pasamos a modo protegido seteando en 1 el bit \textbf{PE} del registro de control \textbf{CR0}.
+
+\begin{algorithm}
+		\begin{algorithmic}
+			\State mov eax, cr0
+			\State or eax, 1
+			\State mov cr0, eax
+		\end{algorithmic}
+\end{algorithm}
+
+La instrucción inmediatamente siguiente es un \textit{far jump} a la siguiente instrucción, lo que permite cargar el registro \textbf{CS} con el selector del segmento del código del kernel (el 0x20 en nuestra GDT). \textit{jmp 0x20:en_modo_protegido}.
+
+Luego establecemos los selectores de segmento de datos de máximo privilegio (el 0) y seteamos la base de la pila del kernel en la dirección 0x27000 ya que utilizaremos la pagina de 4k en 0x26000 como pila.
+
+\begin{algorithm}[H]
+		\begin{algorithmic}[H]
+			\State ; Establecer selectores de segmentos
+			\State xor eax, eax
+			\State mov ax, 0x28
+			\State ; Configuramos el selector de segmento de datos
+			\State mov ds, ax
+			\State ; Configuramos el selector de segmento de pila (stack)
+			\State mov ss, ax
+
+			\State ; Establecer la base de la pila
+			\State mov ebp, 0x27000
+			\State mov esp, ebp
+		\end{algorithmic}
+\end{algorithm}
+
+Una vez realizado esto, inicializamos la pantalla de nuestro sistema con el siguiente código.
+
+\begin{algorithm}[]
+		\begin{algorithmic}[H]
+			\State pantalla_limpia times 4000 db 176, 7
+			\State pantalla_limpia_len equ   \$ - pantalla_limpia
+			\State ; Inicializar pantalla
+			\State mov esi, pantalla_limpia
+			\State mov edi, 0x0
+			\State mov ax, 0x40
+			\State mov es, ax
+			\State mov ecx, 4000
+			\State rep movsw
+		\end{algorithmic}
+\end{algorithm}

@@ -1,0 +1,34 @@
+\subsection{Interrupciones Externas}
+
+\subsubsection{PIC}
+
+Teniendo ya hecha la tabla \textbf{IDT} y generadas las rutinas de atención correspondientes a las excepciones internas del procesador, aquí sólo cargamos las tres interrupciones externas que puede recibir el sistema: el reloj, el teclado y una rutina que provee los servicios de servicios del sistema. Las interrupciones del reloj y teclados son pedidas por el \textbf{PIC} y la última es pedida por el usuario.
+
+El \textbf{PIC} puede atender 15 interrupciones (IRQ0 - IRQ15, la IRQ2 no cuenta ya que es donde se conecta otro \textbf{PIC} en cascada). Por defecto, estas IRQs están mapeadas a las interrupciones 0x8 a 0xF (\textbf{PIC1}) y de 0x70 a la 0x77 (\textbf{PIC2}) pero las interrupciones de la 0 a la 31 están reservadas para el procesador y, en particular, de la 8 a la 15 ya están ocupadas por las excepciones del mismo. Cuando se produzcan interrupciones, se llama al handler de la excepción. Por esto, hay que ``remapear" { } las interrupciones del \textbf{PIC}. Para esto, utilizamos las funciones provistas por la catedra \textbf{resetear_pic} y \textbf{habilitar_pic} que las llamamos dentro del código del kernel.
+
+\begin{algorithm}[]
+		\begin{algorithmic}[H]
+			\State call resetear_pic
+    		\State call habilitar_pic
+		\end{algorithmic}
+\end{algorithm}
+
+Luego de remapear el \textbf{PIC} y habilitarlo, tenemos que la interrupción de reloj está mapeada a la interrupción 32 y el teclado a la 33.
+
+\subsubsection{Interrupción de Reloj}
+
+El código utilizado para atender esta rutina es el mismo que el dado en la clase práctica de scheduler pero con algunas líneas más que se agregaron para poder implementar el modo debug.
+
+Lo primero que realiza esta interrupción es la de guardar en la pila todos los registros con la función \textbf{pushad}. Luego, revisa si esta en modo debug, si lo está salta al final de la rutina (\textbf{.nojump}), sin modificar nada del juego, ejecutando la tarea idle.
+Si no lo está sigue el mismo código dado en clase: llama a proximo_reloj y luego llama a sched_proximo_indice que calcula que tarea se debe ejecutar. Si el indice es el mismo que el actual salta al final de la interrupción terminandola. Si no lo es, mueve el índice al selector \textit{sched_tarea_selector}, resetea el \textbf{PIC} y ejecuta el far jump al offset \textit{sched_tarea_offset} para hacer el cambio de tarea.
+
+
+\subsubsection{Interrupción de Teclado}
+
+En esta interrupción se lee el teclado a través del puerto 0x60 y se obtiene el scan code. Si se presiono la tecla 'y' se entra en modo debug y se sale de la interrupción, sino revisa si esta en modo debug y si se apreto nuevamente la tecla 'y' para salir de él o, si no cumple todas estas condiciones pushea el valor de la tecla apretada y llama a la función \textbf{keyPress} (que se encuentra en \textbf{game.c}) en donde si es una de las teclas permitidas del juego mueve al jugador correspondiente o lanza la tarea.
+
+\subsubsection{Servicios del Sistema}
+
+Dentro de esta interrupción, se pushean los registros eax, ebx y ecx (si bien no en todas las funciones se requieren los 3 argumentos) y se llama a la función \textbf{my_syscall} que se encuentra en el archivo \textbf{game.c}. Luego, se realiza un far jmp a la tarea idle y se termina la interrupción.
+
+Dentro de \textbf{my_syscall} se revisa el parametro eax y luego, dependiendo del valor de ese registro, pasa los valores ebx o, ebx y ecx a las funciones \textbf{game_donde}, \textbf{game_soy} o \textbf{game_mapear} que se encargan de solicitar la posición x e y del mapa donde se encuentra mapeada la tarea, informa al sistema si la correspondiente tarea esta infectada o no y solicita mapear su pagina virtual a una pagina física en el mapa dada por las coordenadas x e y respectivamente.

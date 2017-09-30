@@ -1,0 +1,30 @@
+\subsection{Interrupciones y Excepciones}
+
+\subsubsection{Inicialización de la IDT (Interrupt Descriptor Table)}
+
+En el arreglo de \textbf{itd_entry} de 255 (IDT), cargamos las interrupciones que necesitan ser manejadas, para esto configuramos las entradas como \textit{interrupt gate}, para manejar las interrupciones y excepciones del procesador (valores 0 a 14 y 16 a 19), tamben registramos la interrupcion 32 (reloj), 33 (teclado) y 102 utilizada arbitrariamente como syscall de nuestro sistema.
+Para inicializar esta tabla, realizamos un call a la función \textbf{itd_inicializar} que esta definida en \textbf{idt.c}. Esta función llama al macro \textbf{IDT_ENTRY} para configuar las entradas correspondientes. 
+Todas las entradas fueron seteadas de esta forma, salvo la 102 que haremos la mención de la diferencia en donde corresponda:
+
+\begin{itemize}
+	\item Segment Selector: 0x20. El selector de segmento de código del Kernel.
+	\item Offset: \&_isr + (número de interrupción). En el espacio de código de Kernel que corra la rutina de atención.
+	\item P: 0x01. Presente.
+	\item DPL: 0x03 para la interrupción 102 (para poder ser llamada por las tareas), y 0x00 para el resto de las interrupciones.
+	\item Atributos: 0b0111000000000
+\end{itemize}
+
+%Todas las interrupciones se configuran con privilegio maximo excepto la 102 que se configura con privilegio 3 para asi poder ser llamada por las tareas en el momento de ejecutar un syscall.
+
+
+\subsubsection{Carga de la IDT}
+
+La carga de esta tabla es similar a la carga de la GDT, poseemos el struct \textit{IDT_DESC} que posee el límite y la dirección de base de la tabla y, con la función \textbf{lidt} la cargamos (\textit{lidt [IDT_DESC]}).
+
+
+\subsubsection{Rutina de Atención de Interrupciones}
+
+Las rutinas de atencion estan definidas en \textbf{isr.asm} y se comportan de manera generica para las interrupciones y excepciones del procesador, luego hay funciones especialmente definidas para atender el reloj, el teclado y las syscall.\\
+La rutina de atencion del reloj, se encarga de llamar al scheduler para obtener cual es la proxima tarea a ejecutar y saltar a dicha tarea.\\
+La rutina de atencion del teclado, se encarga de llamar a una funcion en C \textbf{keyPress} que esta definida en \textbf{game.c} y se encargara dependiendo de la tecla precionada que operacion realizar.\\
+La rutina de atencion del syscall realiza un push de los 3 posibles parametros enviados a una de estas rutinas y llama \textbf{my_syscall} tambien definida en \textbf{game} y que se encargar interpretar los parametros, validarlos y realizar las operaciones necesarias.
